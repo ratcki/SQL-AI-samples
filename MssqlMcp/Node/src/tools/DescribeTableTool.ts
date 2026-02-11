@@ -16,10 +16,27 @@ export class DescribeTableTool implements Tool {
 
   async run(params: { tableName: string }) {
     try {
-      const { tableName } = params;
+      let { tableName } = params;
+      let schemaName: string | null = null;
+
+      // Handle schema-prefixed table names (e.g., "dbo.TableName")
+      if (tableName.includes('.')) {
+        const parts = tableName.split('.');
+        schemaName = parts[0];
+        tableName = parts[1];
+      }
+
       const request = new sql.Request();
-      const query = `SELECT COLUMN_NAME as name, DATA_TYPE as type FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tableName`;
+      let query = `SELECT COLUMN_NAME as name, DATA_TYPE as type, CHARACTER_MAXIMUM_LENGTH as max_length, IS_NULLABLE as nullable FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tableName`;
       request.input("tableName", sql.NVarChar, tableName);
+
+      if (schemaName) {
+        query += ` AND TABLE_SCHEMA = @schemaName`;
+        request.input("schemaName", sql.NVarChar, schemaName);
+      }
+
+      query += ` ORDER BY ORDINAL_POSITION`;
+
       const result = await request.query(query);
       return {
         success: true,

@@ -31,34 +31,59 @@ let globalTokenExpiresOn: Date | null = null;
 
 // Function to create SQL config with fresh access token, returns token and expiry
 export async function createSqlConfig(): Promise<{ config: sql.config, token: string, expiresOn: Date }> {
-  const credential = new InteractiveBrowserCredential({
-    redirectUri: 'http://localhost'
-    // disableAutomaticAuthentication : true
-  });
-  const accessToken = await credential.getToken('https://database.windows.net/.default');
-
   const trustServerCertificate = process.env.TRUST_SERVER_CERTIFICATE?.toLowerCase() === 'true';
+  const encrypt = process.env.ENCRYPT?.toLowerCase() !== 'false'; // Default to true unless explicitly set to false
   const connectionTimeout = process.env.CONNECTION_TIMEOUT ? parseInt(process.env.CONNECTION_TIMEOUT, 10) : 30;
 
-  return {
-    config: {
-      server: process.env.SERVER_NAME!,
-      database: process.env.DATABASE_NAME!,
-      options: {
-        encrypt: true,
-        trustServerCertificate
-      },
-      authentication: {
-        type: 'azure-active-directory-access-token',
+  // Check if USERNAME and PASSWORD are provided for SQL Server authentication
+  const username = process.env.USERNAME;
+  const password = process.env.PASSWORD;
+
+  if (username && password) {
+    // Use SQL Server authentication
+    return {
+      config: {
+        server: process.env.SERVER_NAME!,
+        database: process.env.DATABASE_NAME!,
+        user: username,
+        password: password,
         options: {
-          token: accessToken?.token!,
+          encrypt,
+          trustServerCertificate
         },
+        connectionTimeout: connectionTimeout * 1000, // convert seconds to milliseconds
       },
-      connectionTimeout: connectionTimeout * 1000, // convert seconds to milliseconds
-    },
-    token: accessToken?.token!,
-    expiresOn: accessToken?.expiresOnTimestamp ? new Date(accessToken.expiresOnTimestamp) : new Date(Date.now() + 30 * 60 * 1000)
-  };
+      token: 'sql-auth', // placeholder token for SQL auth
+      expiresOn: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours from now
+    };
+  } else {
+    // Use Azure AD authentication
+    const credential = new InteractiveBrowserCredential({
+      redirectUri: 'http://localhost'
+      // disableAutomaticAuthentication : true
+    });
+    const accessToken = await credential.getToken('https://database.windows.net/.default');
+
+    return {
+      config: {
+        server: process.env.SERVER_NAME!,
+        database: process.env.DATABASE_NAME!,
+        options: {
+          encrypt,
+          trustServerCertificate
+        },
+        authentication: {
+          type: 'azure-active-directory-access-token',
+          options: {
+            token: accessToken?.token!,
+          },
+        },
+        connectionTimeout: connectionTimeout * 1000, // convert seconds to milliseconds
+      },
+      token: accessToken?.token!,
+      expiresOn: accessToken?.expiresOnTimestamp ? new Date(accessToken.expiresOnTimestamp) : new Date(Date.now() + 30 * 60 * 1000)
+    };
+  }
 }
 
 const updateDataTool = new UpdateDataTool();
@@ -186,6 +211,11 @@ async function ensureSqlConnection() {
   }
 
   globalSqlPool = await sql.connect(config);
+  
+  // Handle pool errors to prevent process crash
+  globalSqlPool.on('error', (err) => {
+    console.error('SQL Pool Error:', err);
+  });
 }
 
 // Patch all tool handlers to ensure SQL connection before running

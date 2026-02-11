@@ -5,13 +5,13 @@ export class ReadDataTool implements Tool {
   [key: string]: any;
   name = "read_data";
   description = "Executes a SELECT query on an MSSQL Database table. The query must start with SELECT and cannot contain any destructive SQL operations for security reasons.";
-  
+
   inputSchema = {
     type: "object",
     properties: {
-      query: { 
-        type: "string", 
-        description: "SQL SELECT query to execute (must start with SELECT and cannot contain destructive operations). Example: SELECT * FROM movies WHERE genre = 'comedy'" 
+      query: {
+        type: "string",
+        description: "SQL SELECT query to execute (must start with SELECT and cannot contain destructive operations). Example: SELECT * FROM movies WHERE genre = 'comedy'"
       },
     },
     required: ["query"],
@@ -19,7 +19,7 @@ export class ReadDataTool implements Tool {
 
   // List of dangerous SQL keywords that should not be allowed
   private static readonly DANGEROUS_KEYWORDS = [
-    'DELETE', 'DROP', 'UPDATE', 'INSERT', 'ALTER', 'CREATE', 
+    'DELETE', 'DROP', 'UPDATE', 'INSERT', 'ALTER', 'CREATE',
     'TRUNCATE', 'EXEC', 'EXECUTE', 'MERGE', 'REPLACE',
     'GRANT', 'REVOKE', 'COMMIT', 'ROLLBACK', 'TRANSACTION',
     'BEGIN', 'DECLARE', 'SET', 'USE', 'BACKUP',
@@ -34,43 +34,43 @@ export class ReadDataTool implements Tool {
     /SELECT\s+.*?\s+INTO\s+/i,
     // Semicolon followed by dangerous keywords
     /;\s*(DELETE|DROP|UPDATE|INSERT|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|MERGE|REPLACE|GRANT|REVOKE)/i,
-    
+
     // UNION injection attempts with dangerous keywords
     /UNION\s+(?:ALL\s+)?SELECT.*?(DELETE|DROP|UPDATE|INSERT|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE)/i,
-    
+
     // Comment-based injection attempts
     /--.*?(DELETE|DROP|UPDATE|INSERT|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE)/i,
     /\/\*.*?(DELETE|DROP|UPDATE|INSERT|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE).*?\*\//i,
-    
+
     // Stored procedure execution patterns
     /EXEC\s*\(/i,
     /EXECUTE\s*\(/i,
     /sp_/i,
     /xp_/i,
-    
+
     // Dynamic SQL construction
     /EXEC\s*\(/i,
     /EXECUTE\s*\(/i,
-    
+
     // Bulk operations
     /BULK\s+INSERT/i,
     /OPENROWSET/i,
     /OPENDATASOURCE/i,
-    
+
     // System functions that could be dangerous
     /@@/,
     /SYSTEM_USER/i,
     /USER_NAME/i,
     /DB_NAME/i,
     /HOST_NAME/i,
-    
+
     // Time delay attacks
     /WAITFOR\s+DELAY/i,
     /WAITFOR\s+TIME/i,
-    
+
     // Multiple statements (semicolon not at end)
     /;\s*\w/,
-    
+
     // String concatenation that might hide malicious code
     /\+\s*CHAR\s*\(/i,
     /\+\s*NCHAR\s*\(/i,
@@ -84,9 +84,9 @@ export class ReadDataTool implements Tool {
    */
   private validateQuery(query: string): { isValid: boolean; error?: string } {
     if (!query || typeof query !== 'string') {
-      return { 
-        isValid: false, 
-        error: 'Query must be a non-empty string' 
+      return {
+        isValid: false,
+        error: 'Query must be a non-empty string'
       };
     }
 
@@ -98,9 +98,9 @@ export class ReadDataTool implements Tool {
       .trim();
 
     if (!cleanQuery) {
-      return { 
-        isValid: false, 
-        error: 'Query cannot be empty after removing comments' 
+      return {
+        isValid: false,
+        error: 'Query cannot be empty after removing comments'
       };
     }
 
@@ -108,9 +108,9 @@ export class ReadDataTool implements Tool {
 
     // Must start with SELECT
     if (!upperQuery.startsWith('SELECT')) {
-      return { 
-        isValid: false, 
-        error: 'Query must start with SELECT for security reasons' 
+      return {
+        isValid: false,
+        error: 'Query must start with SELECT for security reasons'
       };
     }
 
@@ -119,9 +119,9 @@ export class ReadDataTool implements Tool {
       // Use word boundary regex to match only complete keywords, not parts of words
       const keywordRegex = new RegExp(`(^|\\s|[^A-Za-z0-9_])${keyword}($|\\s|[^A-Za-z0-9_])`, 'i');
       if (keywordRegex.test(upperQuery)) {
-        return { 
-          isValid: false, 
-          error: `Dangerous keyword '${keyword}' detected in query. Only SELECT operations are allowed.` 
+        return {
+          isValid: false,
+          error: `Dangerous keyword '${keyword}' detected in query. Only SELECT operations are allowed.`
         };
       }
     }
@@ -129,9 +129,9 @@ export class ReadDataTool implements Tool {
     // Check for dangerous patterns using regex
     for (const pattern of ReadDataTool.DANGEROUS_PATTERNS) {
       if (pattern.test(query)) {
-        return { 
-          isValid: false, 
-          error: 'Potentially malicious SQL pattern detected. Only simple SELECT queries are allowed.' 
+        return {
+          isValid: false,
+          error: 'Potentially malicious SQL pattern detected. Only simple SELECT queries are allowed.'
         };
       }
     }
@@ -139,25 +139,25 @@ export class ReadDataTool implements Tool {
     // Additional validation: Check for multiple statements
     const statements = cleanQuery.split(';').filter(stmt => stmt.trim().length > 0);
     if (statements.length > 1) {
-      return { 
-        isValid: false, 
-        error: 'Multiple SQL statements are not allowed. Use only a single SELECT statement.' 
+      return {
+        isValid: false,
+        error: 'Multiple SQL statements are not allowed. Use only a single SELECT statement.'
       };
     }
 
     // Check for suspicious string patterns that might indicate obfuscation
     if (query.includes('CHAR(') || query.includes('NCHAR(') || query.includes('ASCII(')) {
-      return { 
-        isValid: false, 
-        error: 'Character conversion functions are not allowed as they may be used for obfuscation.' 
+      return {
+        isValid: false,
+        error: 'Character conversion functions are not allowed as they may be used for obfuscation.'
       };
     }
 
     // Limit query length to prevent potential DoS
     if (query.length > 10000) {
-      return { 
-        isValid: false, 
-        error: 'Query is too long. Maximum allowed length is 10,000 characters.' 
+      return {
+        isValid: false,
+        error: 'Query is too long. Maximum allowed length is 10,000 characters.'
       };
     }
 
@@ -177,7 +177,7 @@ export class ReadDataTool implements Tool {
     // Limit the number of returned records to prevent memory issues
     const maxRecords = 10000;
     if (data.length > maxRecords) {
-      console.warn(`Query returned ${data.length} records, limiting to ${maxRecords}`);
+      console.error(`Query returned ${data.length} records, limiting to ${maxRecords}`);
       return data.slice(0, maxRecords);
     }
 
@@ -188,7 +188,7 @@ export class ReadDataTool implements Tool {
           // Sanitize column names (remove any suspicious characters)
           const sanitizedKey = key.replace(/[^\w\s-_.]/g, '');
           if (sanitizedKey !== key) {
-            console.warn(`Column name sanitized: ${key} -> ${sanitizedKey}`);
+            console.error(`Column name sanitized: ${key} -> ${sanitizedKey}`);
           }
           sanitized[sanitizedKey] = value;
         }
@@ -206,11 +206,11 @@ export class ReadDataTool implements Tool {
   async run(params: any) {
     try {
       const { query } = params;
-      
+
       // Validate the query for security issues
       const validation = this.validateQuery(query);
       if (!validation.isValid) {
-        console.warn(`Security validation failed for query: ${query.substring(0, 100)}...`);
+        console.error(`Security validation failed for query: ${query.substring(0, 100)}...`);
         return {
           success: false,
           message: `Security validation failed: ${validation.error}`,
@@ -219,36 +219,35 @@ export class ReadDataTool implements Tool {
       }
 
       // Log the query for audit purposes (in production, consider more secure logging)
-      console.log(`Executing validated SELECT query: ${query.substring(0, 200)}${query.length > 200 ? '...' : ''}`);
+      console.error(`Executing validated SELECT query: ${query.substring(0, 200)}${query.length > 200 ? '...' : ''}`);
 
       // Execute the query
       const request = new sql.Request();
       const result = await request.query(query);
-      
+
       // Sanitize the result
       const sanitizedData = this.sanitizeResult(result.recordset);
-      
+
       return {
         success: true,
-        message: `Query executed successfully. Retrieved ${sanitizedData.length} record(s)${
-          result.recordset.length !== sanitizedData.length 
-            ? ` (limited from ${result.recordset.length} total records)` 
+        message: `Query executed successfully. Retrieved ${sanitizedData.length} record(s)${result.recordset.length !== sanitizedData.length
+            ? ` (limited from ${result.recordset.length} total records)`
             : ''
-        }`,
+          }`,
         data: sanitizedData,
         recordCount: sanitizedData.length,
         totalRecords: result.recordset.length
       };
-      
+
     } catch (error) {
       console.error("Error executing query:", error);
-      
+
       // Don't expose internal error details to prevent information leakage
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      const safeErrorMessage = errorMessage.includes('Invalid object name') 
-        ? errorMessage 
+      const safeErrorMessage = errorMessage.includes('Invalid object name')
+        ? errorMessage
         : 'Database query execution failed';
-      
+
       return {
         success: false,
         message: `Failed to execute query: ${safeErrorMessage}`,
